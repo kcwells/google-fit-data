@@ -31,6 +31,10 @@ PROJECT_ID = secrets['project_id']
 # See scope here: https://developers.google.com/fit/rest/v1/authorization
 SCOPE = 'https://www.googleapis.com/auth/fitness.body.write'
 
+# Google Fit API wants data limited to 1k items per request
+# See https://developers.google.com/fit/android/history#insert_data
+BATCH_SIZE = 1000
+
 # API Key
 # Steps:
 # 1. Go https://console.developers.google.com/apis/credentials
@@ -104,19 +108,20 @@ def import_weight_to_gfit():
     print 'got weights...'
     min_log_ns = weights[0]["startTimeNanos"]
     max_log_ns = weights[-1]["startTimeNanos"]
-    dataset_id = '%s-%s' % (min_log_ns, max_log_ns)
+    dataset_id = '{}-{}'.format(min_log_ns, max_log_ns)
 
     # patch data to google fit
-    fitness_service.users().dataSources().datasets().patch(
-      userId='me',
-      dataSourceId=data_source_id,
-      datasetId=dataset_id,
-      body=dict(
-        dataSourceId=data_source_id,
-        maxEndTimeNs=max_log_ns,
-        minStartTimeNs=min_log_ns,
-        point=weights,
-      )).execute()
+    for batch_start in range(0, len(items), BATCH_SIZE):
+        fitness_service.users().dataSources().datasets().patch(
+          userId='me',
+          dataSourceId=data_source_id,
+          datasetId=dataset_id,
+          body=dict(
+            dataSourceId=data_source_id,
+            maxEndTimeNs=weights[batch_start + BATCH_SIZE]["startTimeNanos"],
+            minStartTimeNs=weights[batch_start]["startTimeNanos"],
+            point=weights[batch_start : batch_start + BATCH_SIZE],
+          )).execute()
 
     # read data to verify
     print fitness_service.users().dataSources().datasets().get(
